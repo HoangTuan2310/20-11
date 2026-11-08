@@ -1,0 +1,80 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thiệp Tri Ân Thầy Cô</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <main class="container">
+        <header>
+            <p class="eyebrow">THIỆP ĐIỆN TỬ</p>
+            <h1>Gửi lời chúc đến thầy cô</h1>
+            <p class="subtitle">
+                Gửi những lời tri ân chân thành đến người đã dìu dắt bạn.
+            </p>
+        </header>
+
+        <section class="form-card">
+            <form id="greetingForm">
+
+                <label for="recipient">Tên người nhận</label>
+                <input
+                    type="text"
+                    id="recipient"
+                    placeholder="Nhập tên thầy cô..."
+                    required
+                >
+
+                <label for="message">Lời chúc</label>
+                <textarea
+                    id="message"
+                    placeholder="Nhập lời chúc của bạn..."
+                    required
+                ></textarea>
+
+                <button type="submit" id="sendBtn">
+                    GỬI THIỆP
+                </button>
+
+                <p id="status"></p>
+            </form>
+        </section>
+
+        <section id="cardSection" class="card-section hidden">
+
+            <h2>Thiệp tri ân của bạn</h2>
+
+            <div class="card-preview">
+                <img id="cardImage" alt="Thiệp tri ân">
+            </div>
+
+            <div class="actions">
+                <button id="downloadBtn" type="button">
+                    Tải thiệp PNG
+                </button>
+
+                <button id="resetBtn" type="button" class="secondary">
+                    Tạo lại
+                </button>
+            </div>
+
+            <div class="qr-section">
+                <h3>Mã QR chia sẻ thiệp</h3>
+                <div id="qrcode"></div>
+                <p>Quét mã để mở lại nội dung thiệp.</p>
+            </div>
+
+        </section>
+    </main>
+
+    <canvas id="canvas" hidden></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="script.js"></script>
+
+</body>
+</html>

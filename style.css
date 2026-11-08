@@ -1,0 +1,178 @@
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 40px 16px;
+    min-height: 100vh;
+    background: #fffdf8;
+    color: #263844;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    width: 100%;
+    max-width: 580px;
+    margin: auto;
+}
+
+header {
+    margin-bottom: 28px;
+}
+
+.eyebrow {
+    color: #b47a2c;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 4px;
+}
+
+h1 {
+    font-family: PalatinoLinotype, serif;
+    font-size: 36px;
+    font-weight: normal;
+    line-height: 1.25;
+}
+
+.subtitle {
+    color: #71808a;
+    line-height: 1.8;
+    font-size: 14px;
+}
+
+.form-card {
+    padding: 25px;
+    border: 1px solid #ead4ad;
+    border-radius: 16px;
+    background: #fbf6eb;
+}
+
+label {
+    display: block;
+    margin: 12px 0 8px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+input,
+textarea {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #ded2bf;
+    border-radius: 9px;
+    background: white;
+    font-size: 15px;
+    outline: none;
+}
+
+input:focus,
+textarea:focus {
+    border-color: #b47a2c;
+}
+
+textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+button {
+    border: none;
+    border-radius: 30px;
+    padding: 13px 22px;
+    background: #203f50;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: .2s;
+}
+
+button:hover {
+    background: #345c70;
+    transform: translateY(-1px);
+}
+
+form button {
+    width: 100%;
+    margin-top: 20px;
+}
+
+#status {
+    font-size: 13px;
+    color: #64746a;
+}
+
+.card-section {
+    margin-top: 35px;
+    text-align: center;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.card-preview {
+    margin-top: 20px;
+    padding: 10px;
+    border: 1px solid #ead4ad;
+    border-radius: 14px;
+    background: white;
+}
+
+.card-preview img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+.actions {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.secondary {
+    background: #a17b4b;
+}
+
+.qr-section {
+    margin-top: 35px;
+    padding: 25px;
+    border: 1px solid #ead4ad;
+    border-radius: 14px;
+    background: #fbf6eb;
+}
+
+#qrcode {
+    display: flex;
+    justify-content: center;
+    margin: 20px auto;
+}
+
+#qrcode img {
+    padding: 10px;
+    background: white;
+}
+
+.qr-section p {
+    color: #71808a;
+    font-size: 13px;
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 29px;
+    }
+
+    .form-card {
+        padding: 18px;
+    }
+
+    .actions button {
+        width: 100%;
+    }
+}
