@@ -15,7 +15,12 @@ const IMAGE_LIST = [
 const IMAGE_FOLDER = "images/";
 const GOOGLE_CLIENT_ID = "705905284135-9iahbm601t5lmbp9pdo1050rhfv2mltg.apps.googleusercontent.com";
 const DRIVE_FOLDER_NAME = "ThiepTriAn";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_SHEET_NAME = "ThiepTriAn - Loi chuc";
+const SHEET_TAB_NAME = "Lời chúc";
+const GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/spreadsheets"
+].join(" ");
 
 // Không random trùng ảnh ở hai lần liên tiếp.
 let previousImage = null;
@@ -125,7 +130,7 @@ function getDriveAccessToken() {
         try {
             const tokenClient = window.google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CLIENT_ID,
-                scope: DRIVE_SCOPE,
+                scope: GOOGLE_SCOPES,
                 callback: response => {
                     driveTokenRequest = null;
 
@@ -261,6 +266,110 @@ async function saveCardToDrive(blob, sender, recipient, accessToken) {
             method: "POST",
             headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
             body
+        },
+        accessToken
+    );
+}
+
+async function findOrCreateGreetingSheet(accessToken) {
+
+    const query = [
+        `name = '${DRIVE_SHEET_NAME}'`,
+        "mimeType = 'application/vnd.google-apps.spreadsheet'",
+        "trashed = false"
+    ].join(" and ");
+    const searchURL = new URL("https://www.googleapis.com/drive/v3/files");
+    searchURL.searchParams.set("q", query);
+    searchURL.searchParams.set("fields", "files(id,name)");
+    searchURL.searchParams.set("pageSize", "100");
+
+    const searchResult = await driveApiRequest(
+        searchURL.href,
+        { method: "GET" },
+        accessToken
+    );
+
+    let spreadsheetId;
+
+    if (searchResult.files.length > 0) {
+        spreadsheetId = searchResult.files[0].id;
+    } else {
+        const spreadsheet = await sheetsApiRequest(
+            "https://sheets.googleapis.com/v4/spreadsheets",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    properties: { title: DRIVE_SHEET_NAME },
+                    sheets: [{ properties: { title: SHEET_TAB_NAME } }]
+                })
+            },
+            accessToken
+        );
+        spreadsheetId = spreadsheet.spreadsheetId;
+    }
+
+    const headerRange = encodeURIComponent(`'${SHEET_TAB_NAME}'!A1:D1`);
+    await sheetsApiRequest(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${headerRange}?valueInputOption=RAW`,
+        {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                values: [["Thời gian", "Người gửi", "Thầy cô", "Lời chúc"]]
+            })
+        },
+        accessToken
+    );
+
+    return spreadsheetId;
+}
+
+async function sheetsApiRequest(url, options, accessToken) {
+
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            Authorization: `Bearer ${accessToken}`
+        }
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        let detail = errorBody;
+
+        try {
+            const parsedError = JSON.parse(errorBody);
+            detail = parsedError.error?.message || errorBody;
+        } catch {
+            // Giữ nguyên nội dung lỗi nếu phản hồi không phải JSON.
+        }
+
+        throw new Error(`Google Sheets: ${detail || response.statusText}`);
+    }
+
+    return response.json();
+}
+
+async function saveGreetingToSheets(sender, recipient, message, submittedAt, accessToken) {
+
+    const spreadsheetId = await findOrCreateGreetingSheet(accessToken);
+    const range = encodeURIComponent(`'${SHEET_TAB_NAME}'!A:D`);
+    const appendURL = new URL(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append`
+    );
+    appendURL.searchParams.set("valueInputOption", "RAW");
+    appendURL.searchParams.set("insertDataOption", "INSERT_ROWS");
+
+    await sheetsApiRequest(
+        appendURL.href,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                values: [[submittedAt, sender, recipient, message]]
+            })
         },
         accessToken
     );
@@ -474,6 +583,7 @@ form.addEventListener("submit", async function(event) {
     const recipient = recipientInput.value.trim();
     const sender = senderInput.value.trim();
     const message = messageInput.value.trim();
+    const submittedAt = new Date().toISOString();
 
     if (!recipient || !sender || !message) {
         statusText.textContent = "Vui lòng nhập đầy đủ thông tin.";
@@ -490,7 +600,8 @@ form.addEventListener("submit", async function(event) {
 
     sendBtn.disabled = true;
     sendBtn.textContent = "ĐANG KẾT NỐI GOOGLE...";
-    statusText.textContent = "Đang chờ bạn cấp quyền truy cập Google Drive...";
+    statusText.textContent =
+        "Đang chờ bạn cấp quyền truy cập Google Drive và Google Sheets...";
     let cardCreated = false;
 
     try {
@@ -499,7 +610,7 @@ form.addEventListener("submit", async function(event) {
         const accessTokenPromise = getDriveAccessToken();
         const accessToken = await accessTokenPromise;
 
-        sendBtn.textContent = "ĐANG TẠO VÀ LƯU THIỆP...";
+        sendBtn.textContent = "ĐANG TẠO VÀ LƯU...";
         const cardBlob = await createCard(recipient, message, sender);
         cardCreated = true;
 
@@ -508,10 +619,41 @@ form.addEventListener("submit", async function(event) {
 
         form.reset();
 
-        driveStatus.textContent = "Đang lưu thiệp vào Google Drive...";
-        await saveCardToDrive(cardBlob, sender, recipient, accessToken);
-        driveStatus.textContent =
-            `Đã tạo thiệp và lưu vào thư mục “${DRIVE_FOLDER_NAME}” trên Google Drive.`;
+        const saveResults = [];
+
+        driveStatus.textContent = "Đang lưu thiệp và lời chúc...";
+
+        try {
+            await saveCardToDrive(cardBlob, sender, recipient, accessToken);
+            saveResults.push(
+                `Ảnh thiệp đã lưu vào thư mục “${DRIVE_FOLDER_NAME}” trên Google Drive.`
+            );
+        } catch (error) {
+            const errorMessage = error instanceof Error
+                ? error.message
+                : String(error);
+            saveResults.push(`Không lưu được ảnh thiệp: ${errorMessage}`);
+        }
+
+        try {
+            await saveGreetingToSheets(
+                sender,
+                recipient,
+                message,
+                submittedAt,
+                accessToken
+            );
+            saveResults.push(
+                `Lời chúc đã lưu vào file “${DRIVE_SHEET_NAME}” trên Google Sheets.`
+            );
+        } catch (error) {
+            const errorMessage = error instanceof Error
+                ? error.message
+                : String(error);
+            saveResults.push(`Không lưu được lời chúc vào Google Sheets: ${errorMessage}`);
+        }
+
+        driveStatus.textContent = saveResults.join("\n");
 
     } catch (error) {
 
