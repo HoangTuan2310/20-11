@@ -98,9 +98,14 @@ form button {
     margin-top: 20px;
 }
 
-#status {
+#status,
+#driveStatus {
     font-size: 13px;
     color: #64746a;
+}
+
+#driveStatus {
+    overflow-wrap: anywhere;
 }
 
 .card-section {

@@ -13,11 +13,16 @@ const IMAGE_LIST = [
 ];
 
 const IMAGE_FOLDER = "images/";
+const GOOGLE_CLIENT_ID = "705905284135-9iahbm601t5lmbp9pdo1050rhfv2mltg.apps.googleusercontent.com";
+const DRIVE_FOLDER_NAME = "ThiepTriAn";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 // Không random trùng ảnh ở hai lần liên tiếp.
 let previousImage = null;
 
 let currentCardURL = null;
+let driveAccessToken = null;
+let driveTokenExpiresAt = 0;
 
 
 /* =================================
@@ -32,6 +37,7 @@ const messageInput = document.getElementById("message");
 
 const cardSection = document.getElementById("cardSection");
 const cardImage = document.getElementById("cardImage");
+const driveStatus = document.getElementById("driveStatus");
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -90,6 +96,152 @@ function loadImage(src) {
 
     });
 
+}
+
+function getDriveAccessToken() {
+
+    if (GOOGLE_CLIENT_ID.startsWith("YOUR_")) {
+        return Promise.reject(
+            new Error("Hãy cấu hình Google OAuth Client ID trong script.js trước.")
+        );
+    }
+
+    if (!window.google?.accounts?.oauth2) {
+        return Promise.reject(
+            new Error("Không tải được dịch vụ đăng nhập Google. Hãy tải lại trang.")
+        );
+    }
+
+    if (driveAccessToken && Date.now() < driveTokenExpiresAt - 60000) {
+        return Promise.resolve(driveAccessToken);
+    }
+
+    return new Promise((resolve, reject) => {
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: DRIVE_SCOPE,
+            callback: response => {
+                if (response.error || !response.access_token) {
+                    reject(new Error(
+                        response.error_description ||
+                        response.error ||
+                        "Không nhận được quyền truy cập Google Drive."
+                    ));
+                    return;
+                }
+
+                driveAccessToken = response.access_token;
+                driveTokenExpiresAt =
+                    Date.now() + Number(response.expires_in || 3600) * 1000;
+                resolve(driveAccessToken);
+            },
+            error_callback: error => {
+                reject(new Error(
+                    error.message || "Không thể mở cửa sổ đăng nhập Google."
+                ));
+            }
+        });
+
+        tokenClient.requestAccessToken();
+    });
+}
+
+async function driveApiRequest(url, options, accessToken) {
+
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            Authorization: `Bearer ${accessToken}`
+        }
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        let detail = errorBody;
+
+        try {
+            const parsedError = JSON.parse(errorBody);
+            detail = parsedError.error?.message || errorBody;
+        } catch {
+            // Giữ nguyên nội dung lỗi nếu phản hồi không phải JSON.
+        }
+
+        throw new Error(`Google Drive: ${detail || response.statusText}`);
+    }
+
+    return response.json();
+}
+
+async function findOrCreateDriveFolder(accessToken) {
+
+    const query = [
+        `name = '${DRIVE_FOLDER_NAME}'`,
+        "mimeType = 'application/vnd.google-apps.folder'",
+        "trashed = false"
+    ].join(" and ");
+    const searchURL = new URL("https://www.googleapis.com/drive/v3/files");
+    searchURL.searchParams.set("q", query);
+    searchURL.searchParams.set("fields", "files(id,name)");
+    searchURL.searchParams.set("pageSize", "100");
+
+    const searchResult = await driveApiRequest(
+        searchURL.href,
+        { method: "GET" },
+        accessToken
+    );
+
+    if (searchResult.files.length > 0) {
+        return searchResult.files[0].id;
+    }
+
+    const folder = await driveApiRequest(
+        "https://www.googleapis.com/drive/v3/files",
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: DRIVE_FOLDER_NAME,
+                mimeType: "application/vnd.google-apps.folder"
+            })
+        },
+        accessToken
+    );
+
+    return folder.id;
+}
+
+async function saveCardToDrive(blob, sender, recipient, accessToken) {
+
+    const folderId = await findOrCreateDriveFolder(accessToken);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const safeSender = sender.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-");
+    const safeRecipient = recipient.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-");
+    const metadata = {
+        name: `Thiep-${safeSender}-${safeRecipient}-${timestamp}.png`,
+        mimeType: "image/png",
+        parents: [folderId]
+    };
+    const boundary = "-------thiepTriAnDriveUpload";
+    const body = new Blob([
+        `--${boundary}\r\n`,
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n",
+        JSON.stringify(metadata),
+        `\r\n--${boundary}\r\n`,
+        "Content-Type: image/png\r\n\r\n",
+        blob,
+        `\r\n--${boundary}--`
+    ]);
+
+    await driveApiRequest(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",
+        {
+            method: "POST",
+            headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+            body
+        },
+        accessToken
+    );
 }
 
 
@@ -263,12 +415,13 @@ async function createCard(recipient, message, sender) {
     // Kết thúc hiệu ứng
     ctx.shadowBlur = 0;
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
 
         canvas.toBlob(blob => {
 
             if (!blob) {
-                throw new Error("Không thể xuất ảnh thiệp.");
+                reject(new Error("Không thể xuất ảnh thiệp."));
+                return;
             }
 
             if (currentCardURL) {
@@ -314,22 +467,42 @@ form.addEventListener("submit", async function(event) {
     const sendBtn = document.getElementById("sendBtn");
 
     sendBtn.disabled = true;
-    sendBtn.textContent = "ĐANG TẠO THIỆP...";
+    sendBtn.textContent = "ĐANG KẾT NỐI GOOGLE...";
+    statusText.textContent = "Đang chờ bạn cấp quyền truy cập Google Drive...";
+    let cardCreated = false;
 
     try {
 
-        await createCard(recipient, message, sender);
+        // Bắt đầu OAuth ngay trong thao tác bấm nút để trình duyệt cho phép mở cửa sổ đăng nhập.
+        const accessTokenPromise = getDriveAccessToken();
+        const accessToken = await accessTokenPromise;
+
+        sendBtn.textContent = "ĐANG TẠO VÀ LƯU THIỆP...";
+        const cardBlob = await createCard(recipient, message, sender);
+        cardCreated = true;
 
         form.classList.add("hidden");
         cardSection.classList.remove("hidden");
 
         form.reset();
 
-        statusText.textContent = "Đã tạo thiệp thành công!";
+        driveStatus.textContent = "Đang lưu thiệp vào Google Drive...";
+        await saveCardToDrive(cardBlob, sender, recipient, accessToken);
+        driveStatus.textContent =
+            `Đã tạo thiệp và lưu vào thư mục “${DRIVE_FOLDER_NAME}” trên Google Drive.`;
 
     } catch (error) {
 
-        statusText.textContent = error.message;
+        const errorMessage = error instanceof Error
+            ? error.message
+            : String(error);
+
+        if (cardCreated) {
+            driveStatus.textContent =
+                `Thiệp đã tạo nhưng không lưu được lên Google Drive: ${errorMessage}`;
+        } else {
+            statusText.textContent = errorMessage;
+        }
 
     } finally {
 
@@ -353,6 +526,7 @@ resetBtn.addEventListener("click", function() {
     cardSection.classList.add("hidden");
 
     cardImage.removeAttribute("src");
+    driveStatus.textContent = "";
 
     statusText.textContent = "";
 
