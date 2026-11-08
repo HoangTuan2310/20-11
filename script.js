@@ -257,18 +257,12 @@ form.addEventListener("submit", async function(event) {
 
         await createCard(recipient, message);
 
-        // Hiển thị thiệp
+        form.classList.add("hidden");
         cardSection.classList.remove("hidden");
 
-        // Xóa nội dung nhập
         form.reset();
 
         statusText.textContent = "Đã tạo thiệp thành công!";
-
-        cardSection.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-        });
 
     } catch (error) {
 
@@ -310,6 +304,7 @@ resetBtn.addEventListener("click", function() {
 
     form.reset();
 
+    form.classList.remove("hidden");
     cardSection.classList.add("hidden");
 
     cardImage.removeAttribute("src");
@@ -350,11 +345,8 @@ async function loadSharedCard() {
 
         await createCard(recipient, message);
 
+        form.classList.add("hidden");
         cardSection.classList.remove("hidden");
-
-        cardSection.scrollIntoView({
-            behavior: "smooth"
-        });
 
     } catch (error) {
 
