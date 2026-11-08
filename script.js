@@ -23,6 +23,7 @@ let previousImage = null;
 let currentCardURL = null;
 let driveAccessToken = null;
 let driveTokenExpiresAt = 0;
+let driveTokenRequest = null;
 
 
 /* =================================
@@ -116,34 +117,48 @@ function getDriveAccessToken() {
         return Promise.resolve(driveAccessToken);
     }
 
-    return new Promise((resolve, reject) => {
-        const tokenClient = window.google.accounts.oauth2.initTokenClient({
-            client_id: GOOGLE_CLIENT_ID,
-            scope: DRIVE_SCOPE,
-            callback: response => {
-                if (response.error || !response.access_token) {
+    if (driveTokenRequest) {
+        return driveTokenRequest;
+    }
+
+    driveTokenRequest = new Promise((resolve, reject) => {
+        try {
+            const tokenClient = window.google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: DRIVE_SCOPE,
+                callback: response => {
+                    driveTokenRequest = null;
+
+                    if (response.error || !response.access_token) {
+                        reject(new Error(
+                            response.error_description ||
+                            response.error ||
+                            "Không nhận được quyền truy cập Google Drive."
+                        ));
+                        return;
+                    }
+
+                    driveAccessToken = response.access_token;
+                    driveTokenExpiresAt =
+                        Date.now() + Number(response.expires_in || 3600) * 1000;
+                    resolve(driveAccessToken);
+                },
+                error_callback: error => {
+                    driveTokenRequest = null;
                     reject(new Error(
-                        response.error_description ||
-                        response.error ||
-                        "Không nhận được quyền truy cập Google Drive."
+                        error.message || "Không thể mở cửa sổ đăng nhập Google."
                     ));
-                    return;
                 }
+            });
 
-                driveAccessToken = response.access_token;
-                driveTokenExpiresAt =
-                    Date.now() + Number(response.expires_in || 3600) * 1000;
-                resolve(driveAccessToken);
-            },
-            error_callback: error => {
-                reject(new Error(
-                    error.message || "Không thể mở cửa sổ đăng nhập Google."
-                ));
-            }
-        });
-
-        tokenClient.requestAccessToken();
+            tokenClient.requestAccessToken({ prompt: "" });
+        } catch (error) {
+            driveTokenRequest = null;
+            reject(error);
+        }
     });
+
+    return driveTokenRequest;
 }
 
 async function driveApiRequest(url, options, accessToken) {
@@ -215,10 +230,17 @@ async function saveCardToDrive(blob, sender, recipient, accessToken) {
 
     const folderId = await findOrCreateDriveFolder(accessToken);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const safeSender = sender.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-");
-    const safeRecipient = recipient.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-");
+    const normalizeName = name => name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    const safeSender = normalizeName(sender);
+    const safeRecipient = normalizeName(recipient);
     const metadata = {
-        name: `Thiep-${safeSender}-${safeRecipient}-${timestamp}.png`,
+        name: `${safeSender}-${safeRecipient}-${timestamp}.png`,
         mimeType: "image/png",
         parents: [folderId]
     };
