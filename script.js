@@ -28,6 +28,7 @@ let currentCardURL = null;
 const form = document.getElementById("greetingForm");
 
 const recipientInput = document.getElementById("recipient");
+const senderInput = document.getElementById("sender");
 const messageInput = document.getElementById("message");
 
 const cardSection = document.getElementById("cardSection");
@@ -38,7 +39,6 @@ const ctx = canvas.getContext("2d");
 
 const statusText = document.getElementById("status");
 
-const downloadBtn = document.getElementById("downloadBtn");
 const resetBtn = document.getElementById("resetBtn");
 
 
@@ -132,12 +132,43 @@ function wrapText(text, maxWidth) {
     return lines;
 }
 
+function drawJustifiedText(lines, x, y, maxWidth, lineHeight) {
+
+    const spaceWidth = ctx.measureText(" ").width;
+
+    lines.forEach((line, index) => {
+
+        const words = line.split(/\s+/);
+        const lineY = y + lineHeight * (index + 0.5);
+
+        if (index === lines.length - 1 || words.length < 2) {
+            ctx.textAlign = "left";
+            ctx.fillText(line, x, lineY);
+            return;
+        }
+
+        const wordsWidth = words.reduce(
+            (total, word) => total + ctx.measureText(word).width,
+            0
+        );
+        const gapWidth = (maxWidth - wordsWidth) / (words.length - 1);
+        let wordX = x;
+
+        ctx.textAlign = "left";
+        words.forEach(word => {
+            ctx.fillText(word, wordX, lineY);
+            wordX += ctx.measureText(word).width + Math.max(spaceWidth, gapWidth);
+        });
+
+    });
+}
+
 
 /* =================================
    CREATE CARD
 ================================= */
 
-async function createCard(recipient, message) {
+async function createCard(recipient, message, sender) {
 
     const imagePath = randomImage();
 
@@ -165,7 +196,7 @@ async function createCard(recipient, message) {
     // Tên người nhận
     ctx.fillStyle = "#1a1a1a";
     const recipientFontSize = Math.max(24, canvas.width * 0.045);
-    ctx.font = `bold ${recipientFontSize}px Georgia`;
+    ctx.font = `bold ${recipientFontSize}px PalatinoLinotype`;
 
     // Nội dung lời chúc
     const messageFontSize = Math.max(17, canvas.width * 0.027);
@@ -175,28 +206,58 @@ async function createCard(recipient, message) {
     const messageLines = wrapText(message, canvas.width * 0.8);
     const titleHeight = recipientFontSize;
     const titleMessageGap = lineHeight * 0.35;
+    const signatureFontSize = Math.max(18, canvas.width * 0.035);
+    const signatureLineHeight = signatureFontSize * 1.25;
+    const signatureGap = lineHeight * 0.5;
+    const signatureBlockHeight = sender
+        ? signatureGap + signatureLineHeight * 2
+        : 0;
     const textBlockHeight =
-        titleHeight + titleMessageGap + messageLines.length * lineHeight;
+        titleHeight + titleMessageGap + messageLines.length * lineHeight +
+        signatureBlockHeight;
     const textBlockTop = (canvas.height - textBlockHeight) / 2;
 
     // Vẽ cả khối chữ ở giữa ảnh.
-    ctx.font = `bold ${recipientFontSize}px Georgia`;
+    ctx.font = `bold ${recipientFontSize}px PalatinoLinotype`;
     ctx.fillText(
         "Kính gửi " + recipient,
         centerX,
         textBlockTop + titleHeight / 2,
         canvas.width * 0.85
     );
-
     ctx.font = `${messageFontSize}px Arial`;
-    messageLines.forEach((line, index) => {
-        ctx.fillText(
-            line,
-            centerX,
+    ctx.font = `${messageFontSize}px Arial`;
+    drawJustifiedText(
+        messageLines,
+        centerX - canvas.width * 0.4,
+        textBlockTop + titleHeight + titleMessageGap,
+        canvas.width * 0.8,
+        lineHeight
+    );
+
+    if (sender) {
+        const signatureRight = canvas.width * 0.92;
+        const messageBottom =
             textBlockTop + titleHeight + titleMessageGap +
-                lineHeight * (index + 0.5)
+            messageLines.length * lineHeight;
+
+        ctx.textAlign = "right";
+        ctx.font = `italic ${signatureFontSize}px PalatinoLinotype`;
+        ctx.fillText(
+            "Thân mến,",
+            signatureRight,
+            messageBottom + signatureGap + signatureLineHeight / 2,
+            canvas.width * 0.45
         );
-    });
+
+        ctx.font = `bold ${signatureFontSize}px PalatinoLinotype`;
+        ctx.fillText(
+            sender,
+            signatureRight,
+            messageBottom + signatureGap + signatureLineHeight * 1.5,
+            canvas.width * 0.45
+        );
+    }
 
     // Kết thúc hiệu ứng
     ctx.shadowBlur = 0;
@@ -235,9 +296,10 @@ form.addEventListener("submit", async function(event) {
     event.preventDefault();
 
     const recipient = recipientInput.value.trim();
+    const sender = senderInput.value.trim();
     const message = messageInput.value.trim();
 
-    if (!recipient || !message) {
+    if (!recipient || !sender || !message) {
         statusText.textContent = "Vui lòng nhập đầy đủ thông tin.";
         return;
     }
@@ -255,7 +317,7 @@ form.addEventListener("submit", async function(event) {
 
     try {
 
-        await createCard(recipient, message);
+        await createCard(recipient, message, sender);
 
         form.classList.add("hidden");
         cardSection.classList.remove("hidden");
@@ -274,24 +336,6 @@ form.addEventListener("submit", async function(event) {
         sendBtn.textContent = "GỬI THIỆP";
 
     }
-
-});
-
-
-/* =================================
-   DOWNLOAD PNG
-================================= */
-
-downloadBtn.addEventListener("click", function() {
-
-    if (!currentCardURL) return;
-
-    const link = document.createElement("a");
-
-    link.href = currentCardURL;
-    link.download = "Thiep-Tri-An.png";
-
-    link.click();
 
 });
 
@@ -335,6 +379,7 @@ async function loadSharedCard() {
     const params = new URLSearchParams(window.location.search);
 
     const recipient = params.get("recipient");
+    const sender = params.get("sender");
     const message = params.get("message");
 
     if (!recipient || !message || IMAGE_LIST.length === 0) {
@@ -343,7 +388,7 @@ async function loadSharedCard() {
 
     try {
 
-        await createCard(recipient, message);
+        await createCard(recipient, message, sender || "");
 
         form.classList.add("hidden");
         cardSection.classList.remove("hidden");
