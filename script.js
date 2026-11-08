@@ -227,38 +227,6 @@ async function createCard(recipient, message) {
 
 
 /* =================================
-   GENERATE QR
-================================= */
-
-function generateQR(recipient, message) {
-
-    const qrContainer = document.getElementById("qrcode");
-
-    qrContainer.innerHTML = "";
-
-    // QR mở lại trang với nội dung thiệp.
-    // Cần website được đưa lên hosting để thiết bị khác truy cập.
-
-    const shareURL = new URL(window.location.href);
-
-    shareURL.searchParams.set("recipient", recipient);
-    shareURL.searchParams.set("message", message);
-
-    if (window.QRCode) {
-
-        new QRCode(qrContainer, {
-            text: shareURL.href,
-            width: 180,
-            height: 180,
-            correctLevel: QRCode.CorrectLevel.M
-        });
-
-    }
-
-}
-
-
-/* =================================
    SEND CARD
 ================================= */
 
@@ -288,8 +256,6 @@ form.addEventListener("submit", async function(event) {
     try {
 
         await createCard(recipient, message);
-
-        generateQR(recipient, message);
 
         // Hiển thị thiệp
         cardSection.classList.remove("hidden");
@@ -348,8 +314,6 @@ resetBtn.addEventListener("click", function() {
 
     cardImage.removeAttribute("src");
 
-    document.getElementById("qrcode").innerHTML = "";
-
     statusText.textContent = "";
 
     if (currentCardURL) {
@@ -368,7 +332,7 @@ resetBtn.addEventListener("click", function() {
 
 
 /* =================================
-   LOAD CARD FROM QR LINK
+   LOAD SHARED CARD
 ================================= */
 
 async function loadSharedCard() {
@@ -385,8 +349,6 @@ async function loadSharedCard() {
     try {
 
         await createCard(recipient, message);
-
-        generateQR(recipient, message);
 
         cardSection.classList.remove("hidden");
 

@@ -139,30 +139,6 @@ form button {
     background: #a17b4b;
 }
 
-.qr-section {
-    margin-top: 35px;
-    padding: 25px;
-    border: 1px solid #ead4ad;
-    border-radius: 14px;
-    background: #fbf6eb;
-}
-
-#qrcode {
-    display: flex;
-    justify-content: center;
-    margin: 20px auto;
-}
-
-#qrcode img {
-    padding: 10px;
-    background: white;
-}
-
-.qr-section p {
-    color: #71808a;
-    font-size: 13px;
-}
-
 @media (max-width: 480px) {
     h1 {
         font-size: 29px;
