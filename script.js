@@ -4,7 +4,6 @@
 ================================= */
 
 // Sau này thêm tên ảnh của bạn vào đây.
-// Ví dụ: "thiep1.jpg", "thiep2.png"
 
 const IMAGE_LIST = [
     "thiep1.png",
@@ -203,7 +202,9 @@ async function createCard(recipient, message, sender) {
     ctx.font = `${messageFontSize}px Arial`;
 
     const lineHeight = Math.max(25, canvas.width * 0.04);
-    const messageLines = wrapText(message, canvas.width * 0.8);
+    const messageWidth = canvas.width * 0.8 - 100;
+    const messageLeft = (canvas.width - messageWidth) / 2;
+    const messageLines = wrapText(message, messageWidth);
     const titleHeight = recipientFontSize;
     const titleMessageGap = lineHeight * 0.35;
     const signatureFontSize = Math.max(18, canvas.width * 0.035);
@@ -229,9 +230,9 @@ async function createCard(recipient, message, sender) {
     ctx.font = `${messageFontSize}px Arial`;
     drawJustifiedText(
         messageLines,
-        centerX - canvas.width * 0.4,
+        messageLeft,
         textBlockTop + titleHeight + titleMessageGap,
-        canvas.width * 0.8,
+        messageWidth,
         lineHeight
     );
 
