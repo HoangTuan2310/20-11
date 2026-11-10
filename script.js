@@ -13,24 +13,13 @@ const IMAGE_LIST = [
 ];
 
 const IMAGE_FOLDER = "images/";
-const GOOGLE_CLIENT_ID = "705905284135-9iahbm601t5lmbp9pdo1050rhfv2mltg.apps.googleusercontent.com";
-const DRIVE_FOLDER_NAME = "ThiepTriAn";
-const DRIVE_SHEET_NAME = "ThiepTriAn - Loi chuc";
-const SHEET_TAB_NAME = "Lời chúc";
-const GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/spreadsheets"
-].join(" ");
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzFaGKxJcH-dcmn7uxPjoFwmu1EwtVMoU4LlVpZeXogIRDe14xR8vu-ck7Od-AFuwNE/exec";
+const MAX_CARD_SIZE_BYTES = 6 * 1024 * 1024;
 
 // Không random trùng ảnh ở hai lần liên tiếp.
 let previousImage = null;
 
 let currentCardURL = null;
-let driveAccessToken = null;
-let driveTokenExpiresAt = 0;
-let driveTokenRequest = null;
-
-
 /* =================================
    ELEMENTS
 ================================= */
@@ -51,6 +40,29 @@ const ctx = canvas.getContext("2d");
 const statusText = document.getElementById("status");
 
 const resetBtn = document.getElementById("resetBtn");
+
+function getVietnamDateTime(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+    }).formatToParts(date);
+
+    const values = {};
+
+    parts.forEach(part => {
+        if (part.type !== "literal") {
+            values[part.type] = part.value;
+        }
+    });
+
+    return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}+07:00`;
+}
 
 
 /* =================================
@@ -104,6 +116,66 @@ function loadImage(src) {
 
 }
 
+async function saveCardForOwner(blob, sender, recipient, message, submittedAt) {
+    if (!APPS_SCRIPT_URL.startsWith("https://script.google.com/macros/s/") ||
+        !APPS_SCRIPT_URL.endsWith("/exec")) {
+        throw new Error(
+            "Hãy dán URL Web app Apps Script kết thúc bằng /exec vào APPS_SCRIPT_URL trong script.js."
+        );
+    }
+
+    if (blob.size > MAX_CARD_SIZE_BYTES) {
+        throw new Error("Ảnh thiệp vượt quá giới hạn 6 MB.");
+    }
+
+    const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            if (typeof dataUrl !== "string") {
+                reject(new Error("Không thể đọc ảnh thiệp để gửi lưu."));
+                return;
+            }
+            resolve(dataUrl.substring(dataUrl.indexOf(",") + 1));
+        };
+        reader.onerror = () => reject(new Error("Không thể đọc ảnh thiệp để gửi lưu."));
+        reader.readAsDataURL(blob);
+    });
+
+    await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+            sender,
+            recipient,
+            message,
+            submittedAt,
+            imageBase64
+        })
+    });
+}
+
+async function verifyGoogleAccount(accessToken) {
+    const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: {
+            Authorization: `Bearer ${accessToken}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error("Không thể xác minh tài khoản Google. Vui lòng thử lại.");
+    }
+
+    const user = await response.json();
+
+    if (user.email?.toLowerCase() !== GOOGLE_ACCOUNT_EMAIL.toLowerCase()) {
+        throw new Error(
+            `Vui lòng đăng nhập bằng ${GOOGLE_ACCOUNT_EMAIL} để lưu thiệp và lời chúc.`
+        );
+    }
+}
+
 function getDriveAccessToken() {
 
     if (GOOGLE_CLIENT_ID.startsWith("YOUR_")) {
@@ -131,10 +203,9 @@ function getDriveAccessToken() {
             const tokenClient = window.google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CLIENT_ID,
                 scope: GOOGLE_SCOPES,
-                callback: response => {
-                    driveTokenRequest = null;
-
+                callback: async response => {
                     if (response.error || !response.access_token) {
+                        driveTokenRequest = null;
                         reject(new Error(
                             response.error_description ||
                             response.error ||
@@ -143,10 +214,19 @@ function getDriveAccessToken() {
                         return;
                     }
 
-                    driveAccessToken = response.access_token;
-                    driveTokenExpiresAt =
-                        Date.now() + Number(response.expires_in || 3600) * 1000;
-                    resolve(driveAccessToken);
+                    try {
+                        await verifyGoogleAccount(response.access_token);
+                        driveAccessToken = response.access_token;
+                        driveTokenExpiresAt =
+                            Date.now() + Number(response.expires_in || 3600) * 1000;
+                        driveTokenRequest = null;
+                        resolve(driveAccessToken);
+                    } catch (error) {
+                        driveAccessToken = null;
+                        driveTokenExpiresAt = 0;
+                        driveTokenRequest = null;
+                        reject(error);
+                    }
                 },
                 error_callback: error => {
                     driveTokenRequest = null;
@@ -156,7 +236,10 @@ function getDriveAccessToken() {
                 }
             });
 
-            tokenClient.requestAccessToken({ prompt: "" });
+            tokenClient.requestAccessToken({
+                prompt: "",
+                login_hint: GOOGLE_ACCOUNT_EMAIL
+            });
         } catch (error) {
             driveTokenRequest = null;
             reject(error);
@@ -234,7 +317,7 @@ async function findOrCreateDriveFolder(accessToken) {
 async function saveCardToDrive(blob, sender, recipient, accessToken) {
 
     const folderId = await findOrCreateDriveFolder(accessToken);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const timestamp = getVietnamDateTime().replace("T", "_").replace(/[:+]/g, "-");
     const normalizeName = name => name
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
@@ -583,7 +666,7 @@ form.addEventListener("submit", async function(event) {
     const recipient = recipientInput.value.trim();
     const sender = senderInput.value.trim();
     const message = messageInput.value.trim();
-    const submittedAt = new Date().toISOString();
+    const submittedAt = getVietnamDateTime();
 
     if (!recipient || !sender || !message) {
         statusText.textContent = "Vui lòng nhập đầy đủ thông tin.";
@@ -599,16 +682,11 @@ form.addEventListener("submit", async function(event) {
     const sendBtn = document.getElementById("sendBtn");
 
     sendBtn.disabled = true;
-    sendBtn.textContent = "ĐANG KẾT NỐI GOOGLE...";
-    statusText.textContent =
-        "Đang chờ bạn cấp quyền truy cập Google Drive và Google Sheets...";
+    sendBtn.textContent = "ĐANG TẠO THIỆP...";
+    statusText.textContent = "Đang tạo thiệp...";
     let cardCreated = false;
 
     try {
-
-        // Bắt đầu OAuth ngay trong thao tác bấm nút để trình duyệt cho phép mở cửa sổ đăng nhập.
-        const accessTokenPromise = getDriveAccessToken();
-        const accessToken = await accessTokenPromise;
 
         sendBtn.textContent = "ĐANG TẠO VÀ LƯU...";
         const cardBlob = await createCard(recipient, message, sender);
@@ -619,41 +697,16 @@ form.addEventListener("submit", async function(event) {
 
         form.reset();
 
-        const saveResults = [];
-
-        driveStatus.textContent = "Đang lưu thiệp và lời chúc...";
-
-        try {
-            await saveCardToDrive(cardBlob, sender, recipient, accessToken);
-            saveResults.push(
-                `Ảnh thiệp đã lưu vào thư mục “${DRIVE_FOLDER_NAME}” trên Google Drive.`
-            );
-        } catch (error) {
-            const errorMessage = error instanceof Error
-                ? error.message
-                : String(error);
-            saveResults.push(`Không lưu được ảnh thiệp: ${errorMessage}`);
-        }
-
-        try {
-            await saveGreetingToSheets(
-                sender,
-                recipient,
-                message,
-                submittedAt,
-                accessToken
-            );
-            saveResults.push(
-                `Lời chúc đã lưu vào file “${DRIVE_SHEET_NAME}” trên Google Sheets.`
-            );
-        } catch (error) {
-            const errorMessage = error instanceof Error
-                ? error.message
-                : String(error);
-            saveResults.push(`Không lưu được lời chúc vào Google Sheets: ${errorMessage}`);
-        }
-
-        driveStatus.textContent = saveResults.join("\n");
+        driveStatus.textContent = "Đang gửi thiệp và lời chúc để lưu vào tài khoản chủ sở hữu...";
+        await saveCardForOwner(
+            cardBlob,
+            sender,
+            recipient,
+            message,
+            submittedAt
+        );
+        driveStatus.textContent =
+            "Đã gửi lời chúc của bạn.";
 
     } catch (error) {
 
@@ -663,7 +716,7 @@ form.addEventListener("submit", async function(event) {
 
         if (cardCreated) {
             driveStatus.textContent =
-                `Thiệp đã tạo nhưng không lưu được lên Google Drive: ${errorMessage}`;
+                `Thiệp đã tạo nhưng không gửi/lưu được: ${errorMessage}`;
         } else {
             statusText.textContent = errorMessage;
         }
