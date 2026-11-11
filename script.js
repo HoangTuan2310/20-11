@@ -587,7 +587,7 @@ async function createCard(recipient, message, sender) {
     // Vẽ cả khối chữ ở giữa ảnh.
     ctx.font = `bold ${recipientFontSize}px PalatinoLinotype`;
     ctx.fillText(
-        "Kính gửi " + recipient,
+        "Kính gửi thầy/cô " + recipient,
         centerX,
         textBlockTop + titleHeight / 2,
         canvas.width * 0.85
