@@ -33,12 +33,12 @@ h1 {
     font-family: PalatinoLinotype, serif;
     font-size: 36px;
     font-weight: normal;
-    line-height: 1.25;
+    line-height: 0.5;
 }
 
 .subtitle {
     color: #71808a;
-    line-height: 1.4;
+    line-height: 0.5;
     font-size: 14px;
 }
 
