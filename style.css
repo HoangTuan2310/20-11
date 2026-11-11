@@ -5,7 +5,7 @@
 
 body {
     margin: 0;
-    padding: 40px 16px;
+    padding: 10px 16px;
     min-height: 100vh;
     background: #fffdf8;
     color: #263844;
@@ -38,7 +38,7 @@ h1 {
 
 .subtitle {
     color: #71808a;
-    line-height: 1.8;
+    line-height: 1.4;
     font-size: 14px;
 }
 
